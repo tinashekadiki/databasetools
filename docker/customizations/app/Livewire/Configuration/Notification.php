@@ -10,6 +10,7 @@ use App\Services\SmtpSettingsService;
 use App\Traits\Toast;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
@@ -52,6 +53,10 @@ class Notification extends Component
     public string $smtp_from_name = 'Databasement';
 
     public string $smtp_test_recipient = '';
+
+    public ?string $smtp_test_error = null;
+
+    public ?string $smtp_test_error_details = null;
 
     public function mount(SmtpSettingsService $smtpSettings): void
     {
@@ -143,6 +148,7 @@ class Notification extends Component
         $this->validate($this->smtpValidationRules());
         $smtpSettings->save($this->smtpPayload());
         $this->loadSmtpSettings($smtpSettings);
+        $this->clearSmtpTestError();
 
         $this->success(__('SMTP settings saved.'));
     }
@@ -151,21 +157,28 @@ class Notification extends Component
     {
         abort_unless(auth()->user()->can('manage', NotificationChannel::class), Response::HTTP_FORBIDDEN);
 
+        $this->clearSmtpTestError();
+
         try {
             $this->validate($this->smtpValidationRules(includeTestRecipient: true));
             $smtpSettings->save($this->smtpPayload());
             $smtpSettings->sendTest($this->smtp_test_recipient);
             $this->loadSmtpSettings($smtpSettings);
+            $this->clearSmtpTestError();
 
             $this->success(__('SMTP test email sent to: :recipient', ['recipient' => $this->smtp_test_recipient]));
         } catch (ValidationException $e) {
-            throw $e;
+            $this->addValidationErrors($e);
+            $this->recordSmtpTestFailure($e, __('SMTP test validation failed.'));
         } catch (\Throwable $e) {
-            $this->error(
-                title: __('Failed to send SMTP test email: :message', ['message' => $e->getMessage()]),
-                timeout: 0
-            );
+            $this->recordSmtpTestFailure($e);
         }
+    }
+
+    public function clearSmtpTestError(): void
+    {
+        $this->smtp_test_error = null;
+        $this->smtp_test_error_details = null;
     }
 
     // --- Computed Properties ---
@@ -251,5 +264,80 @@ class Notification extends Component
         }
 
         return $rules;
+    }
+
+    private function recordSmtpTestFailure(\Throwable $exception, ?string $title = null): void
+    {
+        $message = $this->smtpFailureMessage($exception);
+        $this->smtp_test_error = $message;
+        $this->smtp_test_error_details = $this->smtpFailureDetails($exception, $message);
+
+        Log::error('SMTP test email failed', [
+            'exception_class' => $exception::class,
+            'message' => $message,
+            'smtp_enabled' => $this->smtp_enabled,
+            'smtp_host' => $this->smtp_host,
+            'smtp_port' => $this->smtp_port,
+            'smtp_scheme' => $this->smtp_scheme,
+            'smtp_from_address' => $this->smtp_from_address,
+            'smtp_test_recipient' => $this->smtp_test_recipient,
+            'exception' => $exception,
+        ]);
+
+        $this->error(
+            title: $title ?? __('Failed to send SMTP test email.'),
+            description: $message,
+            timeout: 60000
+        );
+    }
+
+    private function smtpFailureMessage(\Throwable $exception): string
+    {
+        if ($exception instanceof ValidationException) {
+            return collect($exception->errors())
+                ->flatten()
+                ->filter()
+                ->implode(' ');
+        }
+
+        $messages = [];
+        $currentException = $exception;
+
+        while ($currentException) {
+            $message = trim($currentException->getMessage());
+
+            if ($message !== '') {
+                $messages[] = $message;
+            }
+
+            $currentException = $currentException->getPrevious();
+        }
+
+        return implode(' Caused by: ', array_unique($messages)) ?: $exception::class;
+    }
+
+    private function smtpFailureDetails(\Throwable $exception, string $message): string
+    {
+        return implode(PHP_EOL, [
+            'Time: '.now()->toDateTimeString(),
+            'Exception: '.$exception::class,
+            'Message: '.$message,
+            'Host: '.$this->smtp_host,
+            'Port: '.$this->smtp_port,
+            'Security: '.($this->smtp_scheme === '' ? 'none' : $this->smtp_scheme),
+            'From: '.$this->smtp_from_address,
+            'Recipient: '.$this->smtp_test_recipient,
+        ]);
+    }
+
+    private function addValidationErrors(ValidationException $exception): void
+    {
+        foreach ($exception->errors() as $field => $messages) {
+            $field = $field === 'recipient' ? 'smtp_test_recipient' : $field;
+
+            foreach ($messages as $message) {
+                $this->addError($field, $message);
+            }
+        }
     }
 }

@@ -45,6 +45,8 @@ Route::middleware(['auth'])->group(function () {
     // Index pages - viewable by all roles
     Route::livewire('database-servers', \App\Livewire\DatabaseServer\Index::class)
         ->name('database-servers.index');
+    Route::livewire('database-browser', \App\Livewire\DatabaseBrowser\Index::class)
+        ->name('database-browser.index');
     Route::livewire('volumes', \App\Livewire\Volume\Index::class)
         ->name('volumes.index');
     Route::livewire('snapshots', \App\Livewire\Snapshot\Index::class)

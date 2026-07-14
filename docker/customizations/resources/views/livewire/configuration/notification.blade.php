@@ -91,6 +91,32 @@
                 <p class="text-xs text-base-content/50">{{ __('Leave the password blank to keep the saved password.') }}</p>
             @endif
 
+            @if ($smtp_test_error)
+                <div class="dot-error-copy rounded border border-error/40 bg-error/10 p-4 text-error">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p class="font-semibold">{{ __('SMTP test failed') }}</p>
+                            <p class="mt-1 text-sm">{{ $smtp_test_error }}</p>
+                        </div>
+
+                        <x-button
+                            :label="__('Clear')"
+                            icon="o-x-mark"
+                            class="btn-ghost btn-xs text-error"
+                            wire:click="clearSmtpTestError"
+                        />
+                    </div>
+
+                    <label class="mt-4 block text-xs font-semibold uppercase tracking-wide text-error/80">
+                        {{ __('Copyable details') }}
+                    </label>
+                    <textarea
+                        readonly
+                        class="textarea textarea-bordered mt-1 h-36 w-full resize-y bg-base-100 font-mono text-xs text-base-content"
+                    >{{ $smtp_test_error_details }}</textarea>
+                </div>
+            @endif
+
             @if ($this->canManage)
                 <div class="flex flex-wrap items-center justify-end gap-2 border-t border-base-200/60 pt-4">
                     <x-button

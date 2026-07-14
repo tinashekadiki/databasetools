@@ -9,8 +9,9 @@
     <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}/">
     @include('layouts._theme-init')
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <link rel="stylesheet" href="{{ asset('dot-enterprise.css') }}?v={{ filemtime(public_path('dot-enterprise.css')) }}">
 </head>
-<body class="min-h-screen font-sans antialiased bg-base-200">
+<body class="dot-app-shell min-h-screen font-sans antialiased bg-base-200">
 
 {{-- NAVBAR mobile only --}}
 <x-nav sticky class="lg:hidden">
@@ -25,12 +26,15 @@
 </x-nav>
 
 {{-- MAIN --}}
-<x-main>
+<x-main full-width>
     {{-- SIDEBAR --}}
     <x-slot:sidebar drawer="main-drawer" collapsible class="bg-base-100 lg:bg-inherit">
         <div class="flex flex-col h-full">
             {{-- BRAND --}}
             <x-app-brand class="px-5 pt-4" />
+            <div class="dot-sidebar-kicker">
+                Backup management
+            </div>
 
             {{-- ORG SWITCHER --}}
             @if($user = auth()->user())
@@ -49,6 +53,9 @@
                 <x-menu-separator />
                 <x-menu-item title="{{ __('Dashboard') }}" icon="o-home" link="{{ route('dashboard') }}" wire:navigate />
                 <x-menu-item title="{{ __('Database Servers') }}" icon="o-server-stack" link="{{ route('database-servers.index') }}" wire:navigate />
+                @can('adminer', \App\Models\DatabaseServer::class)
+                    <x-menu-item title="{{ __('Database Browser') }}" icon="o-table-cells" link="{{ route('database-browser.index') }}" wire:navigate />
+                @endcan
                 <livewire:menu.snapshots-menu-item />
                 <livewire:menu.restores-menu-item />
                 <x-menu-item title="{{ __('Volumes') }}" icon="o-circle-stack" link="{{ route('volumes.index') }}" wire:navigate />
@@ -102,19 +109,14 @@
             $githubRepo = config('app.github_repo');
             $githubRepoShort = trim(str_replace('https://', '', $githubRepo), '/');
         @endphp
-        <footer class="mt-12 py-6 border-t border-base-300">
-            <div class="flex flex-col items-center gap-4 text-sm text-base-content/60">
-                {{-- Top row: DOT attribution + GitHub --}}
-                <div class="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
-                    <span>
-                        Powered by
-                        <a href="https://dots.co.zw" target="_blank" rel="noopener" class="link link-hover font-semibold">DOT</a>
-                        <span class="text-base-content/40">(dots.co.zw)</span>
-                    </span>
-                 
-                </div>
-                {{-- Bottom row: Links --}}
-                <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+        <footer class="dot-footer py-3">
+            <div class="flex flex-col gap-2 text-sm text-base-content/60 sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                    Developed by
+                    <a href="https://dots.co.zw" target="_blank" rel="noopener" class="link link-hover font-semibold">DOT</a>
+                    <span class="text-base-content/40">(dots.co.zw)</span>
+                </span>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <a href="https://david-crty.github.io/databasement/" target="_blank" rel="noopener" class="link link-hover">
                         Documentation
                     </a>

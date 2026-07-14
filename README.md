@@ -8,6 +8,9 @@ This setup runs a DOT-branded Databasement deployment locally for database backu
 
 - Databasement UI on `http://localhost:2226`
 - DOT footer branding with a `/licenses` page preserving the upstream Databasement attribution
+- DOT Database Tools product branding across the main shell, auth screens, and email notifications
+- A dedicated Database Browser menu for Adminer access when the feature and role ability are enabled
+- An embedded database-browser workspace with compact connection navigation and Adminer styling
 - SQLite app database persisted locally in `databasement-data/database.sqlite`
 - Backup output synced locally in `databasement-backups`
 - Queue worker enabled for backup jobs
@@ -162,10 +165,23 @@ The custom files are:
 
 ```text
 Dockerfile
+docker/customizations/public/dot-enterprise.css
+docker/customizations/public/dot-adminer.css
+docker/customizations/resources/views/components/app-brand.blade.php
+docker/customizations/resources/views/components/logo-icon.blade.php
 docker/customizations/resources/views/layouts/app.blade.php
+docker/customizations/resources/views/layouts/auth.blade.php
 docker/customizations/resources/views/pages/licenses.blade.php
+docker/customizations/resources/views/mail/notification.blade.php
+docker/customizations/resources/views/livewire/auth/login.blade.php
+docker/customizations/resources/views/livewire/auth/register.blade.php
+docker/customizations/resources/views/livewire/database-browser/index.blade.php
+docker/customizations/resources/views/livewire/configuration/application.blade.php
 docker/customizations/resources/views/livewire/configuration/notification.blade.php
 docker/customizations/app/Livewire/Configuration/Notification.php
+docker/customizations/app/Livewire/DatabaseBrowser/Index.php
+docker/customizations/app/Services/AdminerService.php
+docker/customizations/app/Services/adminer_object.php
 docker/customizations/app/Services/NotificationService.php
 docker/customizations/app/Services/SmtpSettingsService.php
 docker/customizations/routes/web.php

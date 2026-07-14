@@ -31,6 +31,7 @@ services:
     ports:
       - "${DATABASEMENT_PORT:-2226}:2226"
     environment:
+      APP_NAME: DOT Database Tools
       DB_CONNECTION: sqlite
       DB_DATABASE: /data/database.sqlite
       ENABLE_QUEUE_WORKER: "true"

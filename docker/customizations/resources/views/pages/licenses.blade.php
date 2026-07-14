@@ -9,8 +9,9 @@
     <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}/">
     @include('layouts._theme-init')
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <link rel="stylesheet" href="{{ asset('dot-enterprise.css') }}?v={{ filemtime(public_path('dot-enterprise.css')) }}">
 </head>
-<body class="min-h-screen font-sans antialiased bg-base-200">
+<body class="dot-app-shell min-h-screen font-sans antialiased bg-base-200">
 <main class="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
     <div class="mx-auto flex max-w-3xl flex-col gap-6">
         <div class="flex items-center justify-between gap-4">
@@ -26,7 +27,7 @@
                     <p class="text-sm font-semibold uppercase text-primary">{{ __('Licenses') }}</p>
                     <h1 class="mt-2 text-3xl font-bold text-base-content">{{ config('app.name') }}</h1>
                     <p class="mt-3 text-base text-base-content/70">
-                        {{ __('This deployment is configured for DOT while preserving the upstream Databasement project attribution and license references.') }}
+                        {{ __('Developed by DOT (dots.co.zw) while preserving the upstream Databasement project attribution and license references.') }}
                     </p>
                 </div>
 
