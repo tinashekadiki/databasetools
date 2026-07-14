@@ -1,3 +1,5 @@
+.env
 databasement-data/
 databasement-backups/
+mysql-data/
 .git/

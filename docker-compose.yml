@@ -19,6 +19,26 @@ services:
       - ./databasement-backups:/var/backups
     restart: "no"
 
+  databasement-mysql:
+    image: mysql:8.4
+    container_name: databasement-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DATABASEMENT_MYSQL_ROOT_PASSWORD:-root-password}
+      MYSQL_DATABASE: ${DATABASEMENT_MYSQL_DATABASE:-backup_demo}
+      MYSQL_USER: ${DATABASEMENT_MYSQL_USER:-databasement_user}
+      MYSQL_PASSWORD: ${DATABASEMENT_MYSQL_PASSWORD:-databasement_password}
+    ports:
+      - "${DATABASEMENT_MYSQL_PORT:-3307}:3306"
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
   databasement:
     build:
       context: .
@@ -28,10 +48,12 @@ services:
     depends_on:
       databasement-init:
         condition: service_completed_successfully
+      databasement-mysql:
+        condition: service_healthy
     ports:
       - "${DATABASEMENT_PORT:-2226}:2226"
     environment:
-      APP_NAME: DOT Database Tools
+      APP_NAME: ${APP_NAME:-DOT Database Tools}
       DB_CONNECTION: sqlite
       DB_DATABASE: /data/database.sqlite
       ENABLE_QUEUE_WORKER: "true"

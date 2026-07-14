@@ -7,11 +7,13 @@ This setup runs a DOT-branded Databasement deployment locally for database backu
 ## What You Get
 
 - Databasement UI on `http://localhost:2226`
+- MySQL target database on the same Docker network for immediate backup/browser testing
 - DOT footer branding with a `/licenses` page preserving the upstream Databasement attribution
 - DOT Database Tools product branding across the main shell, auth screens, and email notifications
 - A dedicated Database Browser menu for Adminer access when the feature and role ability are enabled
 - An embedded database-browser workspace with compact connection navigation and Adminer styling
 - SQLite app database persisted locally in `databasement-data/database.sqlite`
+- MySQL target database persisted locally in `mysql-data`
 - Backup output synced locally in `databasement-backups`
 - Queue worker enabled for backup jobs
 - A Docker Compose init step that creates required folders/files before the app starts
@@ -21,6 +23,7 @@ This setup runs a DOT-branded Databasement deployment locally for database backu
 
 - Docker Desktop, Docker Engine, or another Docker runtime with Docker Compose.
 - Port `2226` must be free, unless you override it with `DATABASEMENT_PORT`.
+- Port `3307` must be free for the bundled MySQL target database, unless you override it with `DATABASEMENT_MYSQL_PORT`.
 - Enough disk space for Docker images and database backup files.
 
 ## First Run
@@ -28,7 +31,7 @@ This setup runs a DOT-branded Databasement deployment locally for database backu
 From this repository:
 
 ```bash
-docker compose up -d --build
+./deploy.sh
 ```
 
 Open:
@@ -38,6 +41,14 @@ http://localhost:2226
 ```
 
 The first run may take a few minutes because Docker pulls the images and Databasement runs migrations.
+
+The script creates `.env` from `.env.example` when needed, prepares local storage folders, builds the DOT Database Tools image, starts MySQL, waits for health checks, and verifies the web app before printing the connection details.
+
+You can still run Docker Compose directly:
+
+```bash
+docker compose up -d --build
+```
 
 ## Use A Different Port
 
@@ -62,8 +73,65 @@ curl -I http://localhost:2226/login
 Expected:
 
 - `databasement` is running.
+- `databasement-mysql` is running and healthy.
 - Logs show migrations complete and FrankenPHP serving on `:2226`.
 - `curl` returns `HTTP/1.1 200 OK`.
+
+Verify the bundled MySQL target database:
+
+```bash
+docker compose exec databasement-mysql mysql \
+  -udatabasement_user \
+  -pdatabasement_password \
+  -e "SHOW DATABASES;"
+```
+
+Expected output includes:
+
+```text
+backup_demo
+```
+
+## Bundled MySQL Target Database
+
+Docker Compose starts two long-running containers:
+
+```text
+databasement         DOT Database Tools web app
+databasement-mysql   MySQL target database for backups and browsing
+```
+
+The Databasement application still uses SQLite for its own internal state. The MySQL container is the database server that DOT Database Tools can connect to, browse, back up, and restore during local testing.
+
+Add it in the UI under `Database Servers` -> `Add Server` with:
+
+```text
+Name: Local MySQL
+Type: MySQL / MariaDB
+Host: databasement-mysql
+Port: 3306
+Database: backup_demo
+Username: databasement_user
+Password: databasement_password
+```
+
+Use this host-side connection only from tools running on your machine, not from inside the Databasement container:
+
+```text
+Host: 127.0.0.1
+Port: 3307
+```
+
+Override the defaults when needed:
+
+```bash
+DATABASEMENT_MYSQL_PORT=3308 \
+DATABASEMENT_MYSQL_DATABASE=client_demo \
+DATABASEMENT_MYSQL_USER=client_user \
+DATABASEMENT_MYSQL_PASSWORD='change-me' \
+DATABASEMENT_MYSQL_ROOT_PASSWORD='change-root-me' \
+docker compose up -d --build
+```
 
 Verify backup sync:
 
@@ -84,25 +152,25 @@ ok
 Start:
 
 ```bash
-docker compose up -d
+./deploy.sh
 ```
 
 Stop:
 
 ```bash
-docker compose stop
+./deploy.sh down
 ```
 
 Restart:
 
 ```bash
-docker compose restart databasement
+./deploy.sh restart
 ```
 
 View logs:
 
 ```bash
-docker compose logs -f databasement
+./deploy.sh logs
 ```
 
 Update image:
@@ -125,6 +193,7 @@ Do not delete these unless you intentionally want to reset local state:
 ```text
 databasement-data/database.sqlite
 databasement-backups/
+mysql-data/
 ```
 
 In the Databasement UI, configure local storage volumes to use:
@@ -211,10 +280,24 @@ chmod 666 databasement-data/database.sqlite
 chmod 777 databasement-backups
 
 docker rm -f databasement 2>/dev/null || true
+docker rm -f databasement-mysql 2>/dev/null || true
+docker network create databasement-local 2>/dev/null || true
 docker build -t dot/databasement:local .
 
 docker run -d \
+  --name databasement-mysql \
+  --network databasement-local \
+  -p 3307:3306 \
+  -e MYSQL_ROOT_PASSWORD=root-password \
+  -e MYSQL_DATABASE=backup_demo \
+  -e MYSQL_USER=databasement_user \
+  -e MYSQL_PASSWORD=databasement_password \
+  -v "$PWD/mysql-data:/var/lib/mysql" \
+  mysql:8.4
+
+docker run -d \
   --name databasement \
+  --network databasement-local \
   -p 2226:2226 \
   -e DB_CONNECTION=sqlite \
   -e DB_DATABASE=/data/database.sqlite \
