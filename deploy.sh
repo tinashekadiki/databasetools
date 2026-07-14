@@ -4,6 +4,7 @@
 set -euo pipefail
 
 COMMAND="${1:-up}"
+CONFIRMATION_TOKEN="CLEAR DATABASETOOLS"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${PROJECT_ROOT}/.env"
 ENV_EXAMPLE_FILE="${PROJECT_ROOT}/.env.example"
@@ -44,8 +45,6 @@ require_docker() {
 
 prepare_local_storage() {
     mkdir -p databasement-data databasement-backups mysql-data
-    touch databasement-data/database.sqlite
-    chmod 666 databasement-data/database.sqlite
     chmod 777 databasement-backups
 }
 
@@ -99,7 +98,43 @@ verify_mysql_connection() {
         -e MYSQL_PWD="${DATABASEMENT_MYSQL_PASSWORD:-databasement_password}" \
         databasement-mysql \
         mysql -u"${DATABASEMENT_MYSQL_USER:-databasement_user}" \
-        -e "SHOW DATABASES LIKE '${DATABASEMENT_MYSQL_DATABASE:-backup_demo}';" >/dev/null
+        -D "${DATABASEMENT_MYSQL_DATABASE:-databasetools}" \
+        -e "SELECT DATABASE();" >/dev/null
+}
+
+quote_mysql_identifier() {
+    printf '`%s`' "${1//\`/\`\`}"
+}
+
+quote_mysql_literal() {
+    printf "'%s'" "${1//\'/\'\'}"
+}
+
+ensure_application_database() {
+    local database_name="${DATABASEMENT_MYSQL_DATABASE:-databasetools}"
+    local database_user="${DATABASEMENT_MYSQL_USER:-databasement_user}"
+    local database_password="${DATABASEMENT_MYSQL_PASSWORD:-databasement_password}"
+    local quoted_database_name
+    local quoted_database_user
+    local quoted_database_password
+
+    quoted_database_name="$(quote_mysql_identifier "${database_name}")"
+    quoted_database_user="$(quote_mysql_literal "${database_user}")"
+    quoted_database_password="$(quote_mysql_literal "${database_password}")"
+
+    echo "Ensuring MySQL application database exists..."
+    docker compose exec -T \
+        -e MYSQL_PWD="${DATABASEMENT_MYSQL_ROOT_PASSWORD:-root-password}" \
+        databasement-mysql \
+        mysql -uroot <<SQL
+CREATE DATABASE IF NOT EXISTS ${quoted_database_name}
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS ${quoted_database_user}@'%' IDENTIFIED BY ${quoted_database_password};
+ALTER USER ${quoted_database_user}@'%' IDENTIFIED BY ${quoted_database_password};
+GRANT ALL PRIVILEGES ON ${quoted_database_name}.* TO ${quoted_database_user}@'%';
+FLUSH PRIVILEGES;
+SQL
 }
 
 print_access_details() {
@@ -110,14 +145,12 @@ DOT Database Tools is running.
 Open:
   http://localhost:${DATABASEMENT_PORT:-2226}
 
-Add the bundled MySQL server in the app with:
-  Name: Local MySQL
-  Type: MySQL / MariaDB
+System database:
+  Connection: mysql
   Host: databasement-mysql
   Port: 3306
-  Database: ${DATABASEMENT_MYSQL_DATABASE:-backup_demo}
+  Database: ${DATABASEMENT_MYSQL_DATABASE:-databasetools}
   Username: ${DATABASEMENT_MYSQL_USER:-databasement_user}
-  Password: ${DATABASEMENT_MYSQL_PASSWORD:-databasement_password}
 
 Host machine MySQL access:
   Host: 127.0.0.1
@@ -135,8 +168,10 @@ start_stack() {
     require_docker
     prepare_local_storage
     docker compose config >/dev/null
-    docker compose up -d --build
+    docker compose up -d databasement-mysql
     wait_for_mysql
+    ensure_application_database
+    docker compose up -d --build databasement
     wait_for_web
     verify_mysql_connection
     print_access_details
@@ -154,10 +189,48 @@ show_logs() {
     docker compose logs -f --tail 160 databasement databasement-mysql
 }
 
+confirm_destructive_reset() {
+    cat <<WARNING
+
+WARNING: this will permanently clear the local DOT Database Tools stack.
+
+It will remove:
+  - databasement and databasement-mysql containers
+  - local MySQL application database files in mysql-data/
+  - local backup files in databasement-backups/
+  - local runtime files in databasement-data/
+
+This cannot be undone from Docker after it runs.
+WARNING
+
+    printf "\nType \"%s\" to continue: " "${CONFIRMATION_TOKEN}"
+    read -r confirmation
+
+    if [[ "${confirmation}" != "${CONFIRMATION_TOKEN}" ]]; then
+        echo "Reset cancelled."
+        exit 1
+    fi
+}
+
 stop_stack() {
     load_env_file
     require_docker
-    docker compose down
+    docker compose stop databasement databasement-mysql
+    echo "DOT Database Tools containers stopped. Persisted data was kept."
+}
+
+reset_stack() {
+    load_env_file
+    require_docker
+    confirm_destructive_reset
+    docker compose down --remove-orphans
+    rm -rf databasement-data databasement-backups mysql-data
+    echo "Local containers and persisted data have been cleared."
+}
+
+restart_stack() {
+    stop_stack
+    start_stack
 }
 
 case "${COMMAND}" in
@@ -165,8 +238,7 @@ case "${COMMAND}" in
         start_stack
         ;;
     restart)
-        stop_stack
-        start_stack
+        restart_stack
         ;;
     status|ps)
         show_status
@@ -174,11 +246,14 @@ case "${COMMAND}" in
     logs)
         show_logs
         ;;
-    down|stop)
+    stop)
         stop_stack
         ;;
+    down)
+        reset_stack
+        ;;
     *)
-        echo "Usage: ./deploy.sh [up|restart|status|logs|down]" >&2
+        echo "Usage: ./deploy.sh [up|restart|status|logs|down|stop]" >&2
         exit 1
         ;;
 esac

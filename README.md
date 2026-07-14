@@ -2,18 +2,18 @@
 
 Author: Tinashe K
 
-This setup runs a DOT-branded Databasement deployment locally for database backup management. It stores application state in SQLite under `databasement-data` and syncs backup files to `databasement-backups` through the container path `/var/backups`.
+This setup runs a DOT-branded Databasement deployment locally for database backup management. It stores application state in the bundled MySQL container and syncs backup files to `databasement-backups` through the container path `/var/backups`.
 
 ## What You Get
 
 - Databasement UI on `http://localhost:2226`
-- MySQL target database on the same Docker network for immediate backup/browser testing
+- MySQL system database on the same Docker network
 - DOT footer branding with a `/licenses` page preserving the upstream Databasement attribution
 - DOT Database Tools product branding across the main shell, auth screens, and email notifications
 - A dedicated Database Browser menu for Adminer access when the feature and role ability are enabled
 - An embedded database-browser workspace with compact connection navigation and Adminer styling
-- SQLite app database persisted locally in `databasement-data/database.sqlite`
-- MySQL target database persisted locally in `mysql-data`
+- Application database persisted locally in `mysql-data`
+- Runtime data persisted locally in `databasement-data`
 - Backup output synced locally in `databasement-backups`
 - Queue worker enabled for backup jobs
 - A Docker Compose init step that creates required folders/files before the app starts
@@ -23,7 +23,7 @@ This setup runs a DOT-branded Databasement deployment locally for database backu
 
 - Docker Desktop, Docker Engine, or another Docker runtime with Docker Compose.
 - Port `2226` must be free, unless you override it with `DATABASEMENT_PORT`.
-- Port `3307` must be free for the bundled MySQL target database, unless you override it with `DATABASEMENT_MYSQL_PORT`.
+- Port `3307` must be free for the bundled MySQL system database, unless you override it with `DATABASEMENT_MYSQL_PORT`.
 - Enough disk space for Docker images and database backup files.
 
 ## First Run
@@ -44,7 +44,7 @@ The first run may take a few minutes because Docker pulls the images and Databas
 
 The script creates `.env` from `.env.example` when needed, prepares local storage folders, builds the DOT Database Tools image, starts MySQL, waits for health checks, and verifies the web app before printing the connection details.
 
-You can still run Docker Compose directly:
+You can still run Docker Compose directly on a fresh setup, but `./deploy.sh` is preferred because it also verifies and repairs the MySQL database/user on existing volumes:
 
 ```bash
 docker compose up -d --build
@@ -77,7 +77,7 @@ Expected:
 - Logs show migrations complete and FrankenPHP serving on `:2226`.
 - `curl` returns `HTTP/1.1 200 OK`.
 
-Verify the bundled MySQL target database:
+Verify the bundled MySQL system database:
 
 ```bash
 docker compose exec databasement-mysql mysql \
@@ -89,28 +89,39 @@ docker compose exec databasement-mysql mysql \
 Expected output includes:
 
 ```text
-backup_demo
+databasetools
 ```
 
-## Bundled MySQL Target Database
+## Bundled MySQL System Database
 
 Docker Compose starts two long-running containers:
 
 ```text
 databasement         DOT Database Tools web app
-databasement-mysql   MySQL target database for backups and browsing
+databasement-mysql   MySQL system database
 ```
 
-The Databasement application still uses SQLite for its own internal state. The MySQL container is the database server that DOT Database Tools can connect to, browse, back up, and restore during local testing.
+DOT Database Tools uses `databasement-mysql` for its own Laravel application database. SQLite is not used for application state.
 
-Add it in the UI under `Database Servers` -> `Add Server` with:
+The app container connects internally with:
 
 ```text
-Name: Local MySQL
+Connection: mysql
+Host: databasement-mysql
+Port: 3306
+Database: databasetools
+Username: databasement_user
+Password: databasement_password
+```
+
+If you want DOT Database Tools to browse or back up its own system database, add the same MySQL server in the UI under `Database Servers` -> `Add Server`:
+
+```text
+Name: DOT System Database
 Type: MySQL / MariaDB
 Host: databasement-mysql
 Port: 3306
-Database: backup_demo
+Database: databasetools
 Username: databasement_user
 Password: databasement_password
 ```
@@ -126,11 +137,11 @@ Override the defaults when needed:
 
 ```bash
 DATABASEMENT_MYSQL_PORT=3308 \
-DATABASEMENT_MYSQL_DATABASE=client_demo \
+DATABASEMENT_MYSQL_DATABASE=databasetools \
 DATABASEMENT_MYSQL_USER=client_user \
 DATABASEMENT_MYSQL_PASSWORD='change-me' \
 DATABASEMENT_MYSQL_ROOT_PASSWORD='change-root-me' \
-docker compose up -d --build
+./deploy.sh
 ```
 
 Verify backup sync:
@@ -155,11 +166,19 @@ Start:
 ./deploy.sh
 ```
 
-Stop:
+Stop containers and keep data:
+
+```bash
+./deploy.sh stop
+```
+
+Reset and clear everything:
 
 ```bash
 ./deploy.sh down
 ```
+
+`./deploy.sh down` removes the containers and deletes local persisted data in `mysql-data/`, `databasement-backups/`, and `databasement-data/`. The script displays a warning and requires you to type `CLEAR DATABASETOOLS` before it continues.
 
 Restart:
 
@@ -180,7 +199,7 @@ docker compose build --pull databasement
 docker compose up -d
 ```
 
-Remove containers while keeping local data:
+Remove containers while keeping local data, for maintenance only:
 
 ```bash
 docker compose down
@@ -191,10 +210,12 @@ docker compose down
 Do not delete these unless you intentionally want to reset local state:
 
 ```text
-databasement-data/database.sqlite
 databasement-backups/
 mysql-data/
+databasement-data/
 ```
+
+`mysql-data/` contains the DOT Database Tools application database. `databasement-data/` is retained for container runtime data, not SQLite application state.
 
 In the Databasement UI, configure local storage volumes to use:
 
@@ -224,7 +245,7 @@ Use this when you want backup and restore alerts sent through your own SMTP prov
 6. In `Notification Channels`, add an `Email` channel with the recipient email addresses.
 7. Use the paper-airplane test button on the Email channel, then assign the channel to the database servers that should send backup or restore alerts.
 
-SMTP settings are stored in the SQLite application database under `databasement-data/database.sqlite`. Password values are stored through Databasement's encrypted app configuration storage. Leave the password blank when saving if you want to keep the existing saved password.
+SMTP settings are stored in the MySQL application database under `mysql-data/`. Password values are stored through Databasement's encrypted app configuration storage. Leave the password blank when saving if you want to keep the existing saved password.
 
 ## DOT Branding
 
@@ -275,8 +296,6 @@ Use this only if Docker Compose is unavailable.
 
 ```bash
 mkdir -p databasement-data databasement-backups
-touch databasement-data/database.sqlite
-chmod 666 databasement-data/database.sqlite
 chmod 777 databasement-backups
 
 docker rm -f databasement 2>/dev/null || true
@@ -289,7 +308,7 @@ docker run -d \
   --network databasement-local \
   -p 3307:3306 \
   -e MYSQL_ROOT_PASSWORD=root-password \
-  -e MYSQL_DATABASE=backup_demo \
+  -e MYSQL_DATABASE=databasetools \
   -e MYSQL_USER=databasement_user \
   -e MYSQL_PASSWORD=databasement_password \
   -v "$PWD/mysql-data:/var/lib/mysql" \
@@ -299,8 +318,12 @@ docker run -d \
   --name databasement \
   --network databasement-local \
   -p 2226:2226 \
-  -e DB_CONNECTION=sqlite \
-  -e DB_DATABASE=/data/database.sqlite \
+  -e DB_CONNECTION=mysql \
+  -e DB_HOST=databasement-mysql \
+  -e DB_PORT=3306 \
+  -e DB_DATABASE=databasetools \
+  -e DB_USERNAME=databasement_user \
+  -e DB_PASSWORD=databasement_password \
   -e ENABLE_QUEUE_WORKER=true \
   -v "$PWD/databasement-data:/data" \
   -v "$PWD/databasement-backups:/var/backups" \
@@ -313,13 +336,6 @@ If port `2226` is already in use:
 
 ```bash
 DATABASEMENT_PORT=8080 docker compose up -d
-```
-
-If startup logs say the SQLite database file does not exist:
-
-```bash
-docker compose run --rm databasement-init
-docker compose restart databasement
 ```
 
 If backups fail with `Unable to create a directory at /var/backups`:
