@@ -1,0 +1,40 @@
+# Author: Tinashe K
+name: databasement-local
+
+services:
+  databasement-init:
+    image: busybox:1.36
+    container_name: databasement-init
+    command:
+      - sh
+      - -lc
+      - |
+        mkdir -p /data /var/backups
+        touch /data/database.sqlite
+        chmod 666 /data/database.sqlite
+        chmod 777 /var/backups
+        echo "Databasement local storage is ready."
+    volumes:
+      - ./databasement-data:/data
+      - ./databasement-backups:/var/backups
+    restart: "no"
+
+  databasement:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dot/databasement:local
+    container_name: databasement
+    depends_on:
+      databasement-init:
+        condition: service_completed_successfully
+    ports:
+      - "${DATABASEMENT_PORT:-2226}:2226"
+    environment:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /data/database.sqlite
+      ENABLE_QUEUE_WORKER: "true"
+    volumes:
+      - ./databasement-data:/data
+      - ./databasement-backups:/var/backups
+    restart: unless-stopped
