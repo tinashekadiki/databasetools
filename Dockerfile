@@ -1,5 +1,5 @@
 # Author: Tinashe K
-FROM davidcrty/databasement:1
+FROM davidcrty/databasement:1.10.6@sha256:9f76bee54e95849047ef7f8911bedc9643221a7812c11b5b9f5fcf069f953fa2
 
 RUN mkdir -p /app/app/Http/Controllers/Web /app/app/Livewire/DatabaseBrowser /app/resources/views/livewire/database-browser
 
